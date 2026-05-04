@@ -192,3 +192,90 @@ export function esagModeDir(mu: Vec3): Vec3 {
 }
 
 export { dot, norm, cross, frame };
+
+// =====================================================================
+// Generalized Angular Gaussian (GAG) on S^2.
+// y = z / ||z||,  z ~ N(mu, V),  V any 3x3 SPD matrix.
+// The density on S^{d-1} (eq. 7 of Paine et al., d=3) is valid for ANY SPD V:
+//   f(y) = C_d * |V|^{-1/2} * (y' V^{-1} y)^{-d/2} * exp{ 0.5*((y'V^{-1}mu)^2/(y'V^{-1}y) - mu' V^{-1} mu) } * M_{d-1}(...)
+// where M_{d-1}(t) = E[ R^{d-1} ] for R ~ N(t,1) truncated to R>0.
+// For d=3:  M_2(t) = (1+t^2) Phi(t) + t phi(t).
+// =====================================================================
+
+export interface GAGParams {
+  // Euler angles (ZYZ) for rotation Q of V's eigen-frame.
+  psi: number;
+  theta: number;
+  phi: number;
+  // Two free log-eigenvalues; third is set by det(V) = 1.
+  logLam1: number;
+  logLam2: number;
+}
+
+export interface GAGContext {
+  mu: Vec3;
+  V: Mat3;
+  Vinv: Mat3;
+  detV: number;
+  alpha: number;
+  muVinvMu: number;
+}
+
+function matMul(A: Mat3, B: Mat3): Mat3 {
+  const C = new Array(9).fill(0) as Mat3;
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++)
+      for (let k = 0; k < 3; k++) C[i * 3 + j] += A[i * 3 + k] * B[k * 3 + j];
+  return C;
+}
+function transpose(A: Mat3): Mat3 {
+  return [A[0], A[3], A[6], A[1], A[4], A[7], A[2], A[5], A[8]];
+}
+function inv3sym(M: Mat3): { inv: Mat3; det: number } {
+  const a = M[0], b = M[1], c = M[2], d = M[4], e = M[5], f = M[8];
+  // M = [[a,b,c],[b,d,e],[c,e,f]]
+  const A = d * f - e * e;
+  const B = -(b * f - e * c);
+  const C = b * e - d * c;
+  const D = a * f - c * c;
+  const E = -(a * e - b * c);
+  const F = a * d - b * b;
+  const det = a * A + b * B + c * C;
+  const inv: Mat3 = [A / det, B / det, C / det, B / det, D / det, E / det, C / det, E / det, F / det];
+  return { inv, det };
+}
+
+// ZYZ Euler rotation matrix.
+function rotZYZ(psi: number, theta: number, phi: number): Mat3 {
+  const cp = Math.cos(psi), sp = Math.sin(psi);
+  const ct = Math.cos(theta), st = Math.sin(theta);
+  const cf = Math.cos(phi), sf = Math.sin(phi);
+  const Rz1: Mat3 = [cp, -sp, 0, sp, cp, 0, 0, 0, 1];
+  const Ry: Mat3 = [ct, 0, st, 0, 1, 0, -st, 0, ct];
+  const Rz2: Mat3 = [cf, -sf, 0, sf, cf, 0, 0, 0, 1];
+  return matMul(matMul(Rz1, Ry), Rz2);
+}
+
+export function makeGAG(mu: Vec3, p: GAGParams): GAGContext {
+  const Q = rotZYZ(p.psi, p.theta, p.phi);
+  const l1 = Math.exp(p.logLam1);
+  const l2 = Math.exp(p.logLam2);
+  const l3 = 1 / (l1 * l2); // enforce det V = 1
+  const Lam: Mat3 = [l1, 0, 0, 0, l2, 0, 0, 0, l3];
+  const V = matMul(matMul(Q, Lam), transpose(Q));
+  const { inv: Vinv, det: detV } = inv3sym(V);
+  const muVinvMu = quad(Vinv, mu);
+  return { mu, V, Vinv, detV, alpha: norm(mu), muVinvMu };
+}
+
+// General angular-Gaussian density on S^2 (d=3).
+export function gagDensity(ctx: GAGContext, y: Vec3): number {
+  const { mu, Vinv, detV, muVinvMu } = ctx;
+  const q = quad(Vinv, y); // y' V^{-1} y
+  const Vmu = matVec(Vinv, mu); // V^{-1} mu
+  const ymu = dot(y, Vmu); // y' V^{-1} mu
+  const t = ymu / Math.sqrt(q);
+  const denom = Math.pow(q, 1.5);
+  const expPart = Math.exp(0.5 * ((ymu * ymu) / q - muVinvMu));
+  return (C3 / Math.sqrt(detV)) * (1 / denom) * expPart * M2(t);
+}

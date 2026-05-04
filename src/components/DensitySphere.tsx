@@ -7,17 +7,23 @@ import {
   esagDensity,
   makeKentFromESAG,
   kentUnnorm,
+  makeGAG,
+  gagDensity,
+  type GAGParams,
   type Vec3,
 } from "@/lib/esag";
 
-export type DistKind = "esag" | "iag" | "kent";
+export type DistKind = "esag" | "iag" | "kent" | "gag";
 
 interface SphereProps {
   mu: Vec3;
   gamma: [number, number];
+  gag: GAGParams;
   kind: DistKind;
   showAxes: boolean;
   showMean: boolean;
+  showIso: boolean;
+  isoLevels: number;
 }
 
 // Plasma colormap (matplotlib), perceptually uniform.
@@ -45,13 +51,25 @@ function colormap(t: number): [number, number, number] {
   return stops[stops.length - 1][1];
 }
 
-function DensityMesh({ mu, gamma, kind }: { mu: Vec3; gamma: [number, number]; kind: DistKind }) {
-  const geometry = useMemo(() => {
-    const geom = new THREE.SphereGeometry(1, 192, 128);
+function DensityMesh({
+  mu,
+  gamma,
+  gag,
+  kind,
+  showIso,
+  isoLevels,
+}: {
+  mu: Vec3;
+  gamma: [number, number];
+  gag: GAGParams;
+  kind: DistKind;
+  showIso: boolean;
+  isoLevels: number;
+}) {
+  const { geometry, densityAttr } = useMemo(() => {
+    const geom = new THREE.SphereGeometry(1, 320, 200);
     const pos = geom.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
 
-    // Compute densities at each vertex
     const densities = new Float32Array(pos.count);
     let dmax = 0;
 
@@ -60,6 +78,14 @@ function DensityMesh({ mu, gamma, kind }: { mu: Vec3; gamma: [number, number]; k
       for (let i = 0; i < pos.count; i++) {
         const y: Vec3 = [pos.getX(i), pos.getY(i), pos.getZ(i)];
         const d = kentUnnorm(ctx, y);
+        densities[i] = d;
+        if (d > dmax) dmax = d;
+      }
+    } else if (kind === "gag") {
+      const ctx = makeGAG(mu, gag);
+      for (let i = 0; i < pos.count; i++) {
+        const y: Vec3 = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+        const d = gagDensity(ctx, y);
         densities[i] = d;
         if (d > dmax) dmax = d;
       }
@@ -74,36 +100,79 @@ function DensityMesh({ mu, gamma, kind }: { mu: Vec3; gamma: [number, number]; k
     }
     if (dmax === 0) dmax = 1;
 
-    // Slight gamma to reveal tail structure, plus iso-density contour bands.
+    // Tone-map density to [0,1] with a mild gamma to reveal tails.
     const inv = 1 / dmax;
-    const N_LEVELS = 8;
-    for (let i = 0; i < pos.count; i++) {
-      const t = Math.pow(densities[i] * inv, 0.55);
-      let [r, g, b] = colormap(t);
-      // Iso-contour: darken when t is within a thin band around k/N levels.
-      const scaled = t * N_LEVELS;
-      const frac = Math.abs(scaled - Math.round(scaled)); // 0 at level
-      const bandWidth = 0.06;
-      if (frac < bandWidth) {
-        const k = 1 - frac / bandWidth; // 1 at line center
-        const darken = 0.55 * k;
-        r *= 1 - darken;
-        g *= 1 - darken;
-        b *= 1 - darken;
-      }
-      colors[i * 3] = r;
-      colors[i * 3 + 1] = g;
-      colors[i * 3 + 2] = b;
-    }
-    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    return geom;
-  }, [mu, gamma, kind]);
+    const tArr = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) tArr[i] = Math.pow(densities[i] * inv, 0.55);
+    const densityAttr = new THREE.BufferAttribute(tArr, 1);
+    geom.setAttribute("aDensity", densityAttr);
+    return { geometry: geom, densityAttr };
+  }, [mu, gamma, gag, kind]);
 
-  return (
-    <mesh geometry={geometry}>
-      <meshBasicMaterial vertexColors />
-    </mesh>
-  );
+  // Build a 1-D plasma colormap texture sampled in the fragment shader.
+  const lut = useMemo(() => {
+    const N = 256;
+    const data = new Uint8Array(N * 4);
+    for (let i = 0; i < N; i++) {
+      const [r, g, b] = colormap(i / (N - 1));
+      data[i * 4] = Math.round(r * 255);
+      data[i * 4 + 1] = Math.round(g * 255);
+      data[i * 4 + 2] = Math.round(b * 255);
+      data[i * 4 + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(data, N, 1, THREE.RGBAFormat);
+    tex.needsUpdate = true;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    return tex;
+  }, []);
+
+  const material = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uLut: { value: lut },
+        uLevels: { value: isoLevels },
+        uShowIso: { value: showIso ? 1.0 : 0.0 },
+      },
+      vertexShader: /* glsl */ `
+        attribute float aDensity;
+        varying float vT;
+        void main() {
+          vT = aDensity;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        varying float vT;
+        uniform sampler2D uLut;
+        uniform float uLevels;
+        uniform float uShowIso;
+        void main() {
+          float t = clamp(vT, 0.0, 1.0);
+          vec3 col = texture2D(uLut, vec2(t, 0.5)).rgb;
+          if (uShowIso > 0.5) {
+            // Screen-space-uniform iso-contours via fwidth.
+            float scaled = t * uLevels;
+            float d = abs(fract(scaled) - 0.5);
+            float w = fwidth(scaled);
+            // Line where d ~ 0.5 (i.e., crossings between integer levels).
+            float line = smoothstep(0.5 - 1.5 * w, 0.5 - 0.5 * w, d);
+            col = mix(col, col * 0.18, line);
+          }
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,
+      extensions: { derivatives: true } as unknown as THREE.ShaderMaterial["extensions"],
+    });
+  }, [lut]);
+
+  // Live-update uniforms.
+  material.uniforms.uLevels.value = isoLevels;
+  material.uniforms.uShowIso.value = showIso ? 1.0 : 0.0;
+
+  void densityAttr;
+  return <mesh geometry={geometry} material={material} />;
 }
 
 function MeanMarker({ mu }: { mu: Vec3 }) {
@@ -209,7 +278,16 @@ function AutoSpin({ enabled }: { enabled: boolean }) {
   return <group ref={ref} />;
 }
 
-export function DensitySphere({ mu, gamma, kind, showAxes, showMean }: SphereProps) {
+export function DensitySphere({
+  mu,
+  gamma,
+  gag,
+  kind,
+  showAxes,
+  showMean,
+  showIso,
+  isoLevels,
+}: SphereProps) {
   return (
     <Canvas
       camera={{ position: [2.4, 1.6, 2.4], fov: 40 }}
@@ -217,7 +295,7 @@ export function DensitySphere({ mu, gamma, kind, showAxes, showMean }: SpherePro
       style={{ background: "transparent" }}
     >
       <ambientLight intensity={0.9} />
-      <DensityMesh mu={mu} gamma={gamma} kind={kind} />
+      <DensityMesh mu={mu} gamma={gamma} gag={gag} kind={kind} showIso={showIso} isoLevels={isoLevels} />
       <Graticule />
       {showAxes && <AxesHelper />}
       {showMean && <MeanMarker mu={mu} />}
