@@ -20,17 +20,19 @@ interface SphereProps {
   showMean: boolean;
 }
 
-// Viridis-ish sequential colormap (perceptually uniform-ish, scientific feel).
+// Plasma colormap (matplotlib), perceptually uniform.
 function colormap(t: number): [number, number, number] {
-  // clamp
   const x = Math.max(0, Math.min(1, t));
-  // 5-stop cividis-like ramp
   const stops: [number, [number, number, number]][] = [
-    [0.0, [0.0, 0.135, 0.305]],
-    [0.25, [0.165, 0.31, 0.43]],
-    [0.5, [0.45, 0.46, 0.46]],
-    [0.75, [0.78, 0.66, 0.36]],
-    [1.0, [1.0, 0.91, 0.31]],
+    [0.0, [0.050, 0.029, 0.527]],
+    [0.125, [0.243, 0.014, 0.611]],
+    [0.25, [0.416, 0.000, 0.659]],
+    [0.375, [0.578, 0.148, 0.604]],
+    [0.5, [0.718, 0.279, 0.503]],
+    [0.625, [0.838, 0.413, 0.396]],
+    [0.75, [0.937, 0.564, 0.275]],
+    [0.875, [0.989, 0.749, 0.157]],
+    [1.0, [0.940, 0.975, 0.131]],
   ];
   for (let i = 0; i < stops.length - 1; i++) {
     const [t0, c0] = stops[i];
@@ -72,11 +74,23 @@ function DensityMesh({ mu, gamma, kind }: { mu: Vec3; gamma: [number, number]; k
     }
     if (dmax === 0) dmax = 1;
 
-    // Slight gamma to reveal tail structure
+    // Slight gamma to reveal tail structure, plus iso-density contour bands.
     const inv = 1 / dmax;
+    const N_LEVELS = 8;
     for (let i = 0; i < pos.count; i++) {
       const t = Math.pow(densities[i] * inv, 0.55);
-      const [r, g, b] = colormap(t);
+      let [r, g, b] = colormap(t);
+      // Iso-contour: darken when t is within a thin band around k/N levels.
+      const scaled = t * N_LEVELS;
+      const frac = Math.abs(scaled - Math.round(scaled)); // 0 at level
+      const bandWidth = 0.06;
+      if (frac < bandWidth) {
+        const k = 1 - frac / bandWidth; // 1 at line center
+        const darken = 0.55 * k;
+        r *= 1 - darken;
+        g *= 1 - darken;
+        b *= 1 - darken;
+      }
       colors[i * 3] = r;
       colors[i * 3 + 1] = g;
       colors[i * 3 + 2] = b;
@@ -125,6 +139,54 @@ function AxesHelper() {
   );
 }
 
+// Sphere graticule: parallels (latitude circles) + meridians (longitude circles).
+function Graticule() {
+  const geom = useMemo(() => {
+    const r = 1.002;
+    const points: THREE.Vector3[] = [];
+    const SEG = 128;
+    // Parallels: every 15°
+    for (let lat = -75; lat <= 75; lat += 15) {
+      const phi = (lat * Math.PI) / 180;
+      const y = r * Math.sin(phi);
+      const rho = r * Math.cos(phi);
+      for (let i = 0; i < SEG; i++) {
+        const t0 = (i / SEG) * Math.PI * 2;
+        const t1 = ((i + 1) / SEG) * Math.PI * 2;
+        points.push(new THREE.Vector3(rho * Math.cos(t0), y, rho * Math.sin(t0)));
+        points.push(new THREE.Vector3(rho * Math.cos(t1), y, rho * Math.sin(t1)));
+      }
+    }
+    // Meridians: every 30°
+    for (let lon = 0; lon < 360; lon += 30) {
+      const lam = (lon * Math.PI) / 180;
+      for (let i = 0; i < SEG; i++) {
+        const a0 = (i / SEG) * Math.PI - Math.PI / 2;
+        const a1 = ((i + 1) / SEG) * Math.PI - Math.PI / 2;
+        const p0 = new THREE.Vector3(
+          r * Math.cos(a0) * Math.cos(lam),
+          r * Math.sin(a0),
+          r * Math.cos(a0) * Math.sin(lam),
+        );
+        const p1 = new THREE.Vector3(
+          r * Math.cos(a1) * Math.cos(lam),
+          r * Math.sin(a1),
+          r * Math.cos(a1) * Math.sin(lam),
+        );
+        points.push(p0, p1);
+      }
+    }
+    const g = new THREE.BufferGeometry().setFromPoints(points);
+    return g;
+  }, []);
+  return (
+    <lineSegments>
+      <primitive object={geom} attach="geometry" />
+      <lineBasicMaterial attach="material" color="#0f172a" transparent opacity={0.22} />
+    </lineSegments>
+  );
+}
+
 function Axis({ dir, color }: { dir: [number, number, number]; color: string }) {
   const geom = useMemo(() => {
     const g = new THREE.BufferGeometry();
@@ -156,6 +218,7 @@ export function DensitySphere({ mu, gamma, kind, showAxes, showMean }: SpherePro
     >
       <ambientLight intensity={0.9} />
       <DensityMesh mu={mu} gamma={gamma} kind={kind} />
+      <Graticule />
       {showAxes && <AxesHelper />}
       {showMean && <MeanMarker mu={mu} />}
       <OrbitControls enablePan={false} minDistance={1.8} maxDistance={6} />
