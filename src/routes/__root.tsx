@@ -29,14 +29,18 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Angular Gaussian Distributions" },
+      { name: "description", content: "Angle Explorer is an interactive web app for visualizing Generalized Angular Gaussian directional distributions." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Angular Gaussian Distributions" },
+      { property: "og:description", content: "Angle Explorer is an interactive web app for visualizing Generalized Angular Gaussian directional distributions." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Angular Gaussian Distributions" },
+      { name: "twitter:description", content: "Angle Explorer is an interactive web app for visualizing Generalized Angular Gaussian directional distributions." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a7ca2266-b39e-44e9-9e46-2dc88565486b/id-preview-fe041708--aa0117dd-cb01-4b66-8d53-4cfa6de1034d.lovable.app-1777864766601.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a7ca2266-b39e-44e9-9e46-2dc88565486b/id-preview-fe041708--aa0117dd-cb01-4b66-8d53-4cfa6de1034d.lovable.app-1777864766601.png" },
     ],
     links: [
       {
