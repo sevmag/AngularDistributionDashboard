@@ -25,8 +25,9 @@ export const Route = createFileRoute("/")({
   }),
 });
 
-// Fixed mean direction for visualisation: μ̂ = (0, 0, 1). Only the scale α = ‖μ‖ varies.
-const MU_HAT: Vec3 = [0, 0, 1];
+// Fixed mean direction for visualisation: μ̂ = (1, 1, 1)/√3. Only α = ‖μ‖ varies.
+const _S = 1 / Math.sqrt(3);
+const MU_HAT: Vec3 = [_S, _S, _S];
 
 interface ESAGState {
   alpha: number;
@@ -128,7 +129,7 @@ function Index() {
                 Angular Gaussian distributions on S²
               </h1>
               <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                Mean direction is fixed at μ̂ = (0, 0, 1); only the concentration α = ‖μ‖ and
+                Mean direction is fixed at μ̂ = (1, 1, 1)/√3; only the concentration α = ‖μ‖ and
                 shape parameters vary. Compare the isotropic (IAG), elliptically symmetric (ESAG),
                 fully general (GAG) angular Gaussians, and the Kent FB₅ for reference.
               </p>
@@ -220,7 +221,7 @@ function Index() {
               <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-3">
                 <Colorbar />
                 <p className="font-mono text-[11px] text-muted-foreground">
-                  μ̂ = (0, 0, 1) &nbsp;·&nbsp; α = {curAlpha(kind, iag, esag, kent, gag).toFixed(2)}
+                  μ̂ = (1, 1, 1)/√3 &nbsp;·&nbsp; α = {curAlpha(kind, iag, esag, kent, gag).toFixed(2)}
                 </p>
               </div>
             </Card>
