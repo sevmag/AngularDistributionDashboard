@@ -9,16 +9,19 @@ import {
   kentUnnorm,
   makeGAG,
   gagDensity,
+  makeVMF,
+  vmfDensity,
   type GAGParams,
   type Vec3,
 } from "@/lib/esag";
 
-export type DistKind = "esag" | "iag" | "kent" | "gag";
+export type DistKind = "esag" | "iag" | "kent" | "gag" | "vmf";
 
 interface SphereProps {
   mu: Vec3;
   gamma: [number, number];
   gag: GAGParams;
+  kappa: number;
   kind: DistKind;
   showAxes: boolean;
   showMean: boolean;
@@ -55,6 +58,7 @@ function DensityMesh({
   mu,
   gamma,
   gag,
+  kappa,
   kind,
   showIso,
   isoLevels,
@@ -62,6 +66,7 @@ function DensityMesh({
   mu: Vec3;
   gamma: [number, number];
   gag: GAGParams;
+  kappa: number;
   kind: DistKind;
   showIso: boolean;
   isoLevels: number;
@@ -78,6 +83,14 @@ function DensityMesh({
       for (let i = 0; i < pos.count; i++) {
         const y: Vec3 = [pos.getX(i), pos.getY(i), pos.getZ(i)];
         const d = kentUnnorm(ctx, y);
+        densities[i] = d;
+        if (d > dmax) dmax = d;
+      }
+    } else if (kind === "vmf") {
+      const ctx = makeVMF(mu, kappa);
+      for (let i = 0; i < pos.count; i++) {
+        const y: Vec3 = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+        const d = vmfDensity(ctx, y);
         densities[i] = d;
         if (d > dmax) dmax = d;
       }
@@ -107,7 +120,7 @@ function DensityMesh({
     const densityAttr = new THREE.BufferAttribute(tArr, 1);
     geom.setAttribute("aDensity", densityAttr);
     return { geometry: geom, densityAttr };
-  }, [mu, gamma, gag, kind]);
+  }, [mu, gamma, gag, kappa, kind]);
 
   // Build a 1-D plasma colormap texture sampled in the fragment shader.
   const lut = useMemo(() => {
@@ -282,6 +295,7 @@ export function DensitySphere({
   mu,
   gamma,
   gag,
+  kappa,
   kind,
   showAxes,
   showMean,
@@ -295,7 +309,7 @@ export function DensitySphere({
       style={{ background: "transparent" }}
     >
       <ambientLight intensity={0.9} />
-      <DensityMesh mu={mu} gamma={gamma} gag={gag} kind={kind} showIso={showIso} isoLevels={isoLevels} />
+      <DensityMesh mu={mu} gamma={gamma} gag={gag} kappa={kappa} kind={kind} showIso={showIso} isoLevels={isoLevels} />
       <Graticule />
       {showAxes && <AxesHelper />}
       {showMean && <MeanMarker mu={mu} />}
