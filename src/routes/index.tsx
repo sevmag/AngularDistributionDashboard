@@ -40,6 +40,9 @@ interface KentState {
   alpha: number;
   gamma: [number, number];
 }
+interface VMFState {
+  kappa: number;
+}
 interface GAGState {
   alpha: number;
   psi: number;
@@ -69,6 +72,7 @@ function Index() {
   const [iag, setIag] = useState<IAGState>({ alpha: 3 });
   const [esag, setEsag] = useState<ESAGState>({ alpha: 3, gamma: [-1, 1] });
   const [kent, setKent] = useState<KentState>({ alpha: 3, gamma: [-1, 1] });
+  const [vmf, setVmf] = useState<VMFState>({ kappa: 8 });
   const [gag, setGag] = useState<GAGState>({
     alpha: 3,
     psi: 0,
@@ -90,6 +94,7 @@ function Index() {
         mu: scale(MU_HAT, iag.alpha),
         gamma: [0, 0] as [number, number],
         gag: zeroGAG(),
+        kappa: 0,
       };
     }
     if (k === "esag") {
@@ -97,6 +102,7 @@ function Index() {
         mu: scale(MU_HAT, esag.alpha),
         gamma: esag.gamma,
         gag: zeroGAG(),
+        kappa: 0,
       };
     }
     if (k === "kent") {
@@ -104,6 +110,15 @@ function Index() {
         mu: scale(MU_HAT, kent.alpha),
         gamma: kent.gamma,
         gag: zeroGAG(),
+        kappa: 0,
+      };
+    }
+    if (k === "vmf") {
+      return {
+        mu: MU_HAT,
+        gamma: [0, 0] as [number, number],
+        gag: zeroGAG(),
+        kappa: vmf.kappa,
       };
     }
     // gag
@@ -111,6 +126,7 @@ function Index() {
       mu: scale(MU_HAT, gag.alpha),
       gamma: [0, 0] as [number, number],
       gag: gagToParams(gag),
+      kappa: 0,
     };
   };
 
@@ -176,6 +192,7 @@ function Index() {
                     <TabsTrigger value="esag">ESAG</TabsTrigger>
                     <TabsTrigger value="gag">GAG</TabsTrigger>
                     <TabsTrigger value="kent">Kent</TabsTrigger>
+                    <TabsTrigger value="vmf">vMF</TabsTrigger>
                     <TabsTrigger value="compare">Compare</TabsTrigger>
                   </TabsList>
                 </Tabs>
@@ -183,7 +200,7 @@ function Index() {
 
               {compare ? (
                 <div className="grid grid-cols-2 divide-y divide-x divide-border">
-                  {(["iag", "esag", "gag", "kent"] as DistKind[]).map((k) => {
+                  {(["iag", "esag", "gag", "kent", "vmf"] as DistKind[]).map((k) => {
                     const s = stateForKind(k);
                     return (
                       <SphereCell
@@ -192,6 +209,7 @@ function Index() {
                         mu={s.mu}
                         gamma={s.gamma}
                         gag={s.gag}
+                        kappa={s.kappa}
                         kind={k}
                         showAxes={showAxes}
                         showMean={showMean}
@@ -208,6 +226,7 @@ function Index() {
                       mu={cur.mu}
                       gamma={cur.gamma}
                       gag={cur.gag}
+                      kappa={cur.kappa}
                       kind={kind}
                       showAxes={showAxes}
                       showMean={showMean}
@@ -221,7 +240,9 @@ function Index() {
               <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-3">
                 <Colorbar />
                 <p className="font-mono text-[11px] text-muted-foreground">
-                  μ̂ = (1, 1, 1)/√3 &nbsp;·&nbsp; α = {curAlpha(kind, iag, esag, kent, gag).toFixed(2)}
+                  μ̂ = (1, 1, 1)/√3 &nbsp;·&nbsp; {kind === "vmf"
+                    ? `κ = ${vmf.kappa.toFixed(2)}`
+                    : `α = ${curAlpha(kind, iag, esag, kent, gag).toFixed(2)}`}
                 </p>
               </div>
             </Card>
@@ -267,6 +288,10 @@ function Index() {
                     <SliderRow label="γ₂" value={kent.gamma[1]} min={-5} max={5} step={0.05}
                       onChange={(v) => setKent({ ...kent, gamma: [kent.gamma[0], v] })} />
                   </ParamGroup>
+                  <ParamGroup label="vMF">
+                    <SliderRow label="κ" value={vmf.kappa} min={0} max={50} step={0.1}
+                      onChange={(v) => setVmf({ kappa: v })} />
+                  </ParamGroup>
                 </div>
               ) : (
                 <div className="mt-4 space-y-4">
@@ -306,6 +331,10 @@ function Index() {
                       <SliderRow label="γ₂ (orient.)" value={kent.gamma[1]} min={-5} max={5} step={0.05}
                         onChange={(v) => setKent({ ...kent, gamma: [kent.gamma[0], v] })} />
                     </>
+                  )}
+                  {kind === "vmf" && (
+                    <SliderRow label="κ (concentration)" value={vmf.kappa} min={0} max={50} step={0.1}
+                      onChange={(v) => setVmf({ kappa: v })} />
                   )}
                 </div>
               )}
@@ -462,6 +491,7 @@ function SphereCell({
   mu,
   gamma,
   gag,
+  kappa,
   kind,
   showAxes,
   showMean,
@@ -472,6 +502,7 @@ function SphereCell({
   mu: Vec3;
   gamma: [number, number];
   gag: GAGParams;
+  kappa: number;
   kind: DistKind;
   showAxes: boolean;
   showMean: boolean;
@@ -489,6 +520,7 @@ function SphereCell({
             mu={mu}
             gamma={gamma}
             gag={gag}
+            kappa={kappa}
             kind={kind}
             showAxes={showAxes}
             showMean={showMean}
@@ -517,6 +549,7 @@ function kindTitle(k: DistKind) {
     case "esag": return "ESAG(μ, γ) — elliptically symmetric";
     case "gag": return "GAG(μ, V) — general angular Gaussian";
     case "kent": return "Kent FB₅ (matched)";
+    case "vmf": return "von Mises–Fisher(μ̂, κ)";
   }
 }
 function kindShort(k: DistKind) {
@@ -528,6 +561,7 @@ function paramHint(k: DistKind | "compare") {
     case "esag": return "Unrestricted γ ∈ ℝ². γ = 0 ⇒ IAG.";
     case "gag": return "Full SPD V via ZYZ Euler angles + two log-eigenvalues (det V = 1).";
     case "kent": return "Heuristic match: κ = α², β ∝ ‖γ‖κ. Shown unnormalised.";
+    case "vmf": return "Isotropic on the sphere; single concentration parameter κ ≥ 0.";
     case "compare": return "Each panel uses its own parameter set; α is shared semantically only.";
   }
 }
@@ -537,5 +571,6 @@ function curAlpha(k: DistKind, iag: IAGState, esag: ESAGState, kent: KentState, 
     case "esag": return esag.alpha;
     case "kent": return kent.alpha;
     case "gag": return gag.alpha;
+    case "vmf": return 0;
   }
 }

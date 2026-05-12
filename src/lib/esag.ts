@@ -194,6 +194,28 @@ export function esagModeDir(mu: Vec3): Vec3 {
 export { dot, norm, cross, frame };
 
 // =====================================================================
+// von Mises–Fisher (vMF) distribution on S^2.
+// f(y; μ̂, κ) = κ / (2π (e^κ − e^{−κ})) · exp(κ μ̂·y),  μ̂ unit vector, κ ≥ 0.
+// =====================================================================
+
+export interface VMFContext {
+  muHat: Vec3;
+  kappa: number;
+}
+
+export function makeVMF(mu: Vec3, kappa: number): VMFContext {
+  const a = norm(mu) || 1;
+  return { muHat: [mu[0] / a, mu[1] / a, mu[2] / a], kappa };
+}
+
+export function vmfDensity(ctx: VMFContext, y: Vec3): number {
+  const { muHat, kappa } = ctx;
+  if (kappa < 1e-8) return 1 / (4 * Math.PI);
+  const c = kappa / (2 * Math.PI * (Math.exp(kappa) - Math.exp(-kappa)));
+  return c * Math.exp(kappa * dot(muHat, y));
+}
+
+// =====================================================================
 // Generalized Angular Gaussian (GAG) on S^2.
 // y = z / ||z||,  z ~ N(mu, V),  V any 3x3 SPD matrix.
 // The density on S^{d-1} (eq. 7 of Paine et al., d=3) is valid for ANY SPD V:
