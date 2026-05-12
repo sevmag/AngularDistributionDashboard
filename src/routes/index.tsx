@@ -289,7 +289,7 @@ function Index() {
                       onChange={(v) => setKent({ ...kent, gamma: [kent.gamma[0], v] })} />
                   </ParamGroup>
                   <ParamGroup label="vMF">
-                    <SliderRow label="κ" value={vmf.kappa} min={0} max={50} step={0.1}
+                    <SliderRow label="κ" value={vmf.kappa} min={0} max={200} step={0.1}
                       onChange={(v) => setVmf({ kappa: v })} />
                   </ParamGroup>
                 </div>
@@ -333,7 +333,7 @@ function Index() {
                     </>
                   )}
                   {kind === "vmf" && (
-                    <SliderRow label="κ (concentration)" value={vmf.kappa} min={0} max={50} step={0.1}
+                    <SliderRow label="κ (concentration)" value={vmf.kappa} min={0} max={200} step={0.1}
                       onChange={(v) => setVmf({ kappa: v })} />
                   )}
                 </div>
